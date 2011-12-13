@@ -130,16 +130,16 @@ function commerce_custom_product_line_item_type_save($line_item_type) {
 
   // If this was a new line item type...
   if ($op == SAVED_NEW) {
-    // Rebuild the line item type menu items.
     commerce_line_item_types_reset();
-    menu_rebuild();
 
     // Configure the new line item type with default fields.
     $line_item_type = commerce_line_item_type_load($line_item_type['type']);
     commerce_line_item_configure_line_item_type($line_item_type);
 
-    // Notify other modules that a new line item type has been created.
+    // Notify other modules that a new bundle / line item type has been created.
+    field_attach_create_bundle('commerce_line_item', $line_item_type['type']);
     module_invoke_all('commerce_custom_product_line_item_type_insert', $line_item_type);
+    menu_rebuild();
   }
   elseif ($op == SAVED_UPDATED) {
     // Notify other modules that an existing line item type has been updated.
@@ -163,10 +163,11 @@ function commerce_custom_product_line_item_type_delete($type) {
     ->condition('type', $type)
     ->execute();
 
-  // Rebuild the line item type menu items.
   commerce_line_item_types_reset();
-  menu_rebuild();
 
-  // Notify other modules that this line item type has been deleted.
+  // Notify other modules that this bundle / line item type has been deleted.
+  field_attach_delete_bundle('commerce_line_item', $line_item_type['type']);
   module_invoke_all('commerce_custom_product_line_item_type_delete', $line_item_type);
+
+  menu_rebuild();
 }
