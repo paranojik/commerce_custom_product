@@ -127,20 +127,20 @@ function commerce_custom_product_line_item_types() {
  *   The full line item type info array to save.
  * @param $configure
  *   Boolean indicating whether or not line item type configuration should be
- *     performed in the event of a new line item type being saved.
- * @param $skip_reset
- *   Boolean indicating whether or not this save should result in line item
- *     types being reset and the menu being rebuilt; defaults to FALSE. This is
- *     useful when you intend to perform many saves at once, as menu rebuilding
- *     is very costly in terms of performance.
+ *   performed in the event of a new line item type being saved.
+ * @param $skip_rebuild
+ *   Boolean indicating whether or not this save should result in the menu being
+ *   rebuilt; defaults to FALSE. This is useful when you intend to perform many
+ *   saves at once, as menu rebuilding is very costly to performance.
  *
  * @return
  *   The return value of the call to drupal_write_record() to save the line item
  *   type, either FALSE on failure or SAVED_NEW or SAVED_UPDATED indicating the
  *   type of query performed to save the line item type.
  */
-function commerce_custom_product_line_item_type_save($line_item_type, $configure = TRUE, $skip_reset = FALSE) {
+function commerce_custom_product_line_item_type_save($line_item_type, $configure = TRUE, $skip_rebuild = FALSE) {
   $op = drupal_write_record('commerce_product_line_item_type', $line_item_type, commerce_line_item_type_load($line_item_type['type']) ? 'type' : array());
+  commerce_line_item_types_reset();
 
   if ($op == SAVED_NEW) {
     // Notify the field API that a new bundle has been created.
@@ -162,9 +162,8 @@ function commerce_custom_product_line_item_type_save($line_item_type, $configure
     module_invoke_all('commerce_custom_product_line_item_type_update', $line_item_type, $skip_reset);
   }
 
-  if (!$skip_reset) {
-    commerce_line_item_types_reset();
-    menu_rebuild();
+  if (!$skip_rebuild) {
+    variable_set('menu_rebuild_needed', TRUE);
   }
 
   return $op;
