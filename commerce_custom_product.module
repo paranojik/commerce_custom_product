@@ -155,11 +155,11 @@ function commerce_custom_product_line_item_type_save($line_item_type, $configure
     }
 
     // Notify other modules that a new line item type has been created.
-    module_invoke_all('commerce_custom_product_line_item_type_insert', $line_item_type, $skip_reset);
+    module_invoke_all('commerce_custom_product_line_item_type_insert', $line_item_type, $skip_rebuild);
   }
   elseif ($op == SAVED_UPDATED) {
     // Notify other modules that an existing line item type has been updated.
-    module_invoke_all('commerce_custom_product_line_item_type_update', $line_item_type, $skip_reset);
+    module_invoke_all('commerce_custom_product_line_item_type_update', $line_item_type, $skip_rebuild);
   }
 
   if (!$skip_rebuild) {
@@ -189,5 +189,5 @@ function commerce_custom_product_line_item_type_delete($type) {
   field_attach_delete_bundle('commerce_line_item', $line_item_type['type']);
   module_invoke_all('commerce_custom_product_line_item_type_delete', $line_item_type);
 
-  menu_rebuild();
+  variable_set('menu_rebuild_needed', TRUE);
 }

@@ -11,10 +11,13 @@
  *
  * @param $line_item_type
  *   The product line item type info array.
+ * @param $skip_rebuild
+ *   Boolean indicating whether or not this save will result in the menu being
+ *   rebuilt; if FALSE, your hook should not perform similar rebuild operations.
  *
  * @see commerce_custom_product_line_item_type_save()
  */
-function hook_commerce_custom_product_line_item_type_insert($line_item_type, $skip_reset = FALSE) {
+function hook_commerce_custom_product_line_item_type_insert($line_item_type, $skip_rebuild = FALSE) {
   // No example.
 }
 
@@ -23,10 +26,13 @@ function hook_commerce_custom_product_line_item_type_insert($line_item_type, $sk
  *
  * @param $line_item_type
  *   The product line item type info array.
+ * @param $skip_rebuild
+ *   Boolean indicating whether or not this save will result in the menu being
+ *   rebuilt; if FALSE, your hook should not perform similar rebuild operations.
  *
  * @see commerce_custom_product_line_item_type_save()
  */
-function hook_commerce_custom_product_line_item_type_update($line_item_type, $skip_reset = FALSE) {
+function hook_commerce_custom_product_line_item_type_update($line_item_type, $skip_rebuild = FALSE) {
   // No example.
 }
 
