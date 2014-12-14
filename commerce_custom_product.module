@@ -197,12 +197,12 @@ function commerce_custom_product_line_item_type_delete($type) {
  */
 function commerce_custom_product_field_info() {
   return array(
-    'commerce_line_item_type_reference' => array(
+    'commerce_custom_product_line_item_type_reference' => array(
       'label' => t('Line item type reference'),
       'description' => t('This field stores the ID of a related line item type.'),
       'settings' => array(),
       'instance_settings' => array(),
-      'default_widget' => 'commerce_line_item_type_reference_select',
+      'default_widget' => 'commerce_custom_product_line_item_type_reference_select',
       'default_formatter' => NULL,
     ),
   );
@@ -217,7 +217,7 @@ function commerce_custom_product_field_validate($entity_type, $entity, $field, $
       $type = commerce_line_item_type_load($item['target_id']);
       if (!$type || !$type['product']) {
         $errors[$field['field_name']][$langcode][$delta][] = array(
-          'error' => 'commerce_line_item_type_reference_invalid',
+          'error' => 'commerce_custom_product_line_item_type_reference_invalid',
           'message' => t('%name: Invalid line item type referenced.', array('%name' => $instance['label'])),
         );
       }
@@ -231,10 +231,10 @@ function commerce_custom_product_field_validate($entity_type, $entity, $field, $
 function commerce_custom_product_field_widget_info() {
   $widgets = array();
 
-  $widgets['commerce_line_item_type_reference_select'] = array(
+  $widgets['commerce_custom_product_line_item_type_reference_select'] = array(
     'label' => t('Select list'),
     'description' => t('Select referencable line item type from a drop-down.'),
-    'field types' => array('commerce_line_item_type_reference'),
+    'field types' => array('commerce_custom_product_line_item_type_reference'),
     'settings' => array(),
     'behaviors' => array(
       'multiple values' => FIELD_BEHAVIOR_DEFAULT,
@@ -249,7 +249,7 @@ function commerce_custom_product_field_widget_info() {
  */
 function commerce_custom_product_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
   // Define the autocomplete textfield for products.
-  if ($instance['widget']['type'] == 'commerce_line_item_type_reference_select') {
+  if ($instance['widget']['type'] == 'commerce_custom_product_line_item_type_reference_select') {
     $line_items_types = array_filter(
       commerce_line_item_types(),
       function ($item) { return $item['product']; }
@@ -280,4 +280,190 @@ function commerce_custom_product_field_widget_form(&$form, &$form_state, $field,
  */
 function commerce_custom_product_field_is_empty($item, $field) {
   return empty($item['target_id']);
+}
+
+/**
+ * Implements hook_field_formatter_info().
+ */
+function commerce_custom_product_field_formatter_info() {
+  return array(
+    'commerce_custom_product_add_to_cart_form' => array(
+      'label' => t('Add to Cart form with per-product line items'),
+      'description' => t('Display an Add to Cart form for the referenced product allowing to configure line items on a per-product basis.'),
+      'field types' => array('commerce_product_reference', 'entityreference'),
+      'settings' => array(
+        'show_quantity' => FALSE,
+        'default_quantity' => 1,
+        'combine' => TRUE,
+        'show_single_product_attributes' => FALSE,
+        'line_item_type_configuration' => NULL,
+      ),
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_formatter_settings_form().
+ */
+function commerce_custom_product_field_formatter_settings_form($field, $instance, $view_mode, $form, &$form_state) {
+  $display = $instance['display'][$view_mode];
+  $settings = array_merge(field_info_formatter_settings($display['type']), $display['settings']);
+
+  $element = array();
+
+  if ($display['type'] == 'commerce_custom_product_add_to_cart_form') {
+    $element['show_quantity'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Display a textfield quantity widget on the add to cart form.'),
+      '#default_value' => $settings['show_quantity'],
+    );
+
+    $element['default_quantity'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Default quantity'),
+      '#default_value' => $settings['default_quantity'] <= 0 ? 1 : $settings['default_quantity'],
+      '#size' => 16,
+    );
+
+    $element['combine'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Attempt to combine like products on the same line item in the cart.'),
+      '#description' => t('The line item type, referenced product, and data from fields exposed on the Add to Cart form must all match to combine.'),
+      '#default_value' => $settings['combine'],
+    );
+
+    $element['show_single_product_attributes'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Show attribute widgets even if the Add to Cart form only represents one product.'),
+      '#description' => t('If enabled, attribute widgets will be shown on the form with the only available options selected.'),
+      '#default_value' => $settings['show_single_product_attributes'],
+    );
+
+    // Add a conditionally visible line item type configuration element.
+    $all_fields = array_filter(
+      field_info_instances($instance['entity_type'], $instance['bundle']),
+      function ($item) {
+        $field = field_info_field($item['field_name']);
+        return $field['type'] == 'commerce_custom_product_line_item_type_reference' && empty($item['deleted']);
+      }
+    );
+
+    $options = array();
+    foreach ($all_fields as $field) {
+      $options[$field['field_name']] = $field['label'];
+    }
+
+    $element['line_item_type_configuration'] = array(
+      '#type' => 'select',
+      '#title' => t('Line item type configuration field'),
+      '#options' => $options,
+      '#default_value' => $settings['line_item_type_configuration'],
+    );
+  }
+
+  return $element;
+}
+
+/**
+ * Implements hook_field_formatter_settings_summary().
+ */
+function commerce_custom_product_field_formatter_settings_summary($field, $instance, $view_mode) {
+  $display = $instance['display'][$view_mode];
+  $settings = array_merge(field_info_formatter_settings($display['type']), $display['settings']);
+
+  $summary = array();
+
+  if ($display['type'] == 'commerce_custom_product_add_to_cart_form') {
+    $config_field = field_info_instance($instance['entity_type'], $settings['line_item_type_configuration'], $instance['bundle']);
+    $summary = array(
+      t('Quantity widget: !status', array('!status' => !empty($settings['show_quantity']) ? t('Enabled') : t('Disabled'))),
+      t('Default quantity: @quantity', array('@quantity' => $settings['default_quantity'])),
+      t('Combine like items: !status', array('!status' => !empty($settings['combine']) ? t('Enabled') : t('Disabled'))),
+      t('!visibility attributes on single product forms.', array('!visibility' => !empty($settings['show_single_product_attributes']) ? t('Showing') : t('Hiding'))),
+      t('Add to Cart line item type configuration: @field', array('@field' => $config_field['label'])),
+    );
+  }
+
+  return implode('<br />', $summary);
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ */
+function commerce_custom_product_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  $settings = array_merge(field_info_formatter_settings($display['type']), $display['settings']);
+  $result = array();
+
+  if ($display['type'] == 'commerce_custom_product_add_to_cart_form') {
+    // Collect the list of product IDs.
+    $product_ids = array();
+
+    foreach ($items as $delta => $item) {
+      if (isset($item['product_id'])) {
+        $product_ids[] = $item['product_id'];
+      }
+      elseif (module_exists('entityreference') && isset($item['target_id'])) {
+        $product_ids[] = $item['target_id'];
+      }
+    }
+
+    // Load the referenced products.
+    $products = commerce_product_load_multiple($product_ids);
+
+    // Check to ensure products are referenced, before returning results.
+    if (!empty($products)) {
+      $line_items = array();
+      $types = field_get_items($entity_type, $entity, $settings['line_item_type_configuration']);
+
+      if (empty($types)) {
+        $line_item = commerce_product_line_item_new(commerce_product_reference_default_product($products), $settings['default_quantity'], 0, array(), 'product');
+        $line_item->data['context']['product_ids'] = array_keys($products);
+        $line_item->data['context']['add_to_cart_combine'] = !empty($settings['combine']);
+        $line_item->data['context']['show_single_product_attributes'] = !empty($settings['show_single_product_attributes']);
+        $line_items[] = $line_item;
+      }
+      else {
+        foreach ($types as $type) {
+          // TODO create more if use_multi.
+          $line_item = commerce_product_line_item_new(commerce_product_reference_default_product($products), $settings['default_quantity'], 0, array(), $type['target_ids']);
+          $line_item->data['context']['product_ids'] = array_keys($products);
+          $line_item->data['context']['add_to_cart_combine'] = !empty($settings['combine']);
+          $line_item->data['context']['show_single_product_attributes'] = !empty($settings['show_single_product_attributes']);
+          $line_items[] = $line_item;
+        }
+      }
+
+      $result[] = array(
+        '#arguments' => array(
+          'form_id' => commerce_cart_add_to_cart_form_id($product_ids),
+          'line_items' => $line_items,
+          'show_quantity' => $settings['show_quantity'],
+        ),
+      );
+    }
+  }
+
+  return $result;
+}
+
+/**
+ * Builds an appropriate cart form ID based on the products on the form.
+ */
+function commerce_custom_product_add_to_cart_form_id($product_ids) {
+  // Make sure the length of the form id is limited.
+  $data = implode('_', $product_ids);
+
+  if (strlen($data) > 50) {
+    $data = drupal_hash_base64($data);
+  }
+
+  return 'commerce_custom_product_add_to_cart_form_' . $data;
+}
+
+/**
+ * Builds an Add to Cart form for a set of products.
+ */
+function commerce_custom_add_to_cart_form($form, &$form_state, $line_items, $show_quantity = FALSE, $context = array()) {
+  commerce_cart_add_to_cart_form($form, $form_state, $line_items[0], $show_quantity, $context);
+  // TODO handle line items.
 }
