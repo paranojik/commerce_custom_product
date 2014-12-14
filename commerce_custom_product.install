@@ -35,3 +35,32 @@ function commerce_custom_product_schema() {
 
   return $schema;
 }
+
+/**
+ * Implements hook_field_schema().
+ */
+function commerce_custom_product_field_schema($field) {
+  if ($field['type'] == 'commerce_line_item_type_reference') {
+    return array(
+      'columns' => array(
+        'target_id' => array(
+          'description' => 'Stored ID of line item type being referenced.',
+          'type' => 'varchar',
+          'length' => 255,
+          'not null' => FALSE,
+        ),
+        'use_multi' => array(
+          'description' => 'One line item instance per product item will be added if 1.',
+          'type' => 'int',
+          'size' => 'tiny',
+          'unsigned' => TRUE,
+          'not null' => FALSE,
+          'default' => 0,
+        ),
+      ),
+      'indexes' => array(
+        'target_id' => array('target_id'),
+      ),
+    );
+  }
+}

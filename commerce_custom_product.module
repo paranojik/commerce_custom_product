@@ -191,3 +191,93 @@ function commerce_custom_product_line_item_type_delete($type) {
 
   variable_set('menu_rebuild_needed', TRUE);
 }
+
+/**
+ * Implements hook_field_info().
+ */
+function commerce_custom_product_field_info() {
+  return array(
+    'commerce_line_item_type_reference' => array(
+      'label' => t('Line item type reference'),
+      'description' => t('This field stores the ID of a related line item type.'),
+      'settings' => array(),
+      'instance_settings' => array(),
+      'default_widget' => 'commerce_line_item_type_reference_select',
+      'default_formatter' => NULL,
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_validate().
+ */
+function commerce_custom_product_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors) {
+  foreach ($items as $delta => $item) {
+    if (!empty($item['target_id'])) {
+      $type = commerce_line_item_type_load($item['target_id']);
+      if (!$type || !$type['product']) {
+        $errors[$field['field_name']][$langcode][$delta][] = array(
+          'error' => 'commerce_line_item_type_reference_invalid',
+          'message' => t('%name: Invalid line item type referenced.', array('%name' => $instance['label'])),
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_field_widget_info().
+ */
+function commerce_custom_product_field_widget_info() {
+  $widgets = array();
+
+  $widgets['commerce_line_item_type_reference_select'] = array(
+    'label' => t('Select list'),
+    'description' => t('Select referencable line item type from a drop-down.'),
+    'field types' => array('commerce_line_item_type_reference'),
+    'settings' => array(),
+    'behaviors' => array(
+      'multiple values' => FIELD_BEHAVIOR_DEFAULT,
+    ),
+  );
+
+  return $widgets;
+}
+
+/**
+ * Implements hook_field_widget_form().
+ */
+function commerce_custom_product_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+  // Define the autocomplete textfield for products.
+  if ($instance['widget']['type'] == 'commerce_line_item_type_reference_select') {
+    $line_items_types = array_filter(
+      commerce_line_item_types(),
+      function ($item) { return $item['product']; }
+    );
+
+    $options = array(NULL => '- ' . t('None') . ' -');
+    foreach ($line_items_types as $line_items_type) {
+      $options[$line_items_type['type']] = $line_items_type['name'];
+    }
+
+    return $element + array(
+      'target_id' => array(
+        '#type' => 'select',
+        '#default_value' => isset($items[$delta]['target_id']) ? $items[$delta]['target_id'] : NULL,
+        '#options' => $options,
+      ),
+      'use_multi' => array(
+        '#type' => 'checkbox',
+        '#title' => t('One line item per product item'),
+        '#default_value' => isset($items[$delta]['use_multi']) ? $items[$delta]['use_multi'] : 0,
+      ),
+    );
+  }
+}
+
+/**
+ * Implements hook_field_is_empty().
+ */
+function commerce_custom_product_field_is_empty($item, $field) {
+  return empty($item['target_id']);
+}
