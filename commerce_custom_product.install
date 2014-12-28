@@ -40,7 +40,7 @@ function commerce_custom_product_schema() {
  * Implements hook_field_schema().
  */
 function commerce_custom_product_field_schema($field) {
-  if ($field['type'] == 'commerce_line_item_type_reference') {
+  if ($field['type'] == 'commerce_custom_product_line_item_type_reference') {
     return array(
       'columns' => array(
         'target_id' => array(
