@@ -364,6 +364,9 @@ function commerce_custom_product_add_to_cart_form_submit($form, &$form_state) {
   // - quantitiy might have changed by now - we need to create more line items.
 }
 
+/**
+ * JS callback for quantity updates on "Add to cart" form.
+ */
 function commerce_custom_product_quantity_js($form, $form_state) {
   return $form;
 }
