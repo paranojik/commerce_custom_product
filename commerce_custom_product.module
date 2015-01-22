@@ -366,6 +366,7 @@ function commerce_custom_product_add_to_cart_form_submit($form, &$form_state) {
   // Use default submit handler to add product line item.
   commerce_cart_add_to_cart_form_submit($form, $form_state);
 
+  //Add any additional line items.
   if (!empty($form_state['extra_line_items'])) {
     $product_id = $form_state['values']['product_id'];
     $product = commerce_product_load($product_id);
