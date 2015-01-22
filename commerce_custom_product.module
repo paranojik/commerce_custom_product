@@ -291,9 +291,28 @@ function commerce_custom_product_field_is_empty($item, $field) {
 function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$form, &$form_state) {
   $entity = entity_load($form_state['context']['entity_type'], array($form_state['context']['entity_id']));
   $entity = reset($entity);
+  $view_mode = $form_state['context']['display'];
+  $entity_info = entity_get_info($form_state['context']['entity_type']);
+  $bundle_key = $entity_info['entity keys']['bundle'];
 
-  // TODO - make field configurable: alter field formatter configuration?
-  if ($types = field_get_items($form_state['context']['entity_type'], $entity, 'field_line_item_type')) {
+  // Check field configuration and see which field is to be used as the source for
+  // configuration.
+  $extra_line_items_field = NULL;
+  foreach (field_info_instances($form_state['context']['entity_type'], $entity->{$bundle_key}) as $instance) {
+    $field = field_info_field($instance['field_name']);
+    if ($field['type'] == 'commerce_product_reference') {
+      if (empty($instance['display'][$view_mode])) {
+        $view_mode = 'default';
+      }
+      if ($instance['display'][$view_mode]['type'] == 'commerce_cart_add_to_cart_form') {
+        $extra_line_items_field = $instance['display'][$view_mode]['settings']['extra_line_items_field'];
+      }
+    }
+  }
+
+  // If configuration field was found and there are values on it add stuff to the
+  // form.
+  if ($extra_line_items_field && $types = field_get_items($form_state['context']['entity_type'], $entity, $extra_line_items_field)) {
     if (!empty($form_state['input']['quantity'])) {
       $form['quantity']['#default_value'] = $form_state['input']['quantity'];
     }
@@ -426,4 +445,61 @@ function commerce_custom_product_add_to_cart_form_submit($form, &$form_state) {
  */
 function commerce_custom_product_quantity_js($form, $form_state) {
   return $form;
+}
+
+/**
+ * Implements hook_field_formatter_info_alter().
+ */
+function commerce_custom_product_field_formatter_info_alter(&$info) {
+  $info['commerce_cart_add_to_cart_form']['settings']['extra_line_items_field'] = NULL;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * Alters field display overview.
+ */
+function commerce_custom_product_form_field_ui_display_overview_form_alter(&$form, $form_state) {
+  // Check if we have both product reference and line item type reference fields.
+  $instances = field_info_instances($form['#entity_type'], $form['#bundle']);
+  $line_item_type_ref_fields = $product_ref_fields = array();
+  foreach ($instances as $instance) {
+    $field = field_info_field($instance['field_name']);
+    if ($field['type'] == 'commerce_custom_product_line_item_type_reference') {
+      $line_item_type_ref_fields[$instance['field_name']] = $instance['label'];
+    }
+    elseif ($field['type'] == 'commerce_product_reference') {
+      $product_ref_fields[] = $instance['field_name'];
+    }
+  }
+
+  if (!empty($line_item_type_ref_fields) && !empty($product_ref_fields)) {
+    foreach ($product_ref_fields as $field_name) {
+      $extra_line_items_field = $instances[$field_name]['display'][$form['#view_mode']]['settings']['extra_line_items_field'];
+      if (!empty($form_state['values']['fields'][$field_name]['settings_edit_form']['settings']['extra_line_items_field'])) {
+        $extra_line_items_field = $form_state['values']['fields'][$field_name]['settings_edit_form']['settings']['extra_line_items_field'];
+      }
+
+      // Update field formatter settings summary with info about extra line items
+      // field.
+      if (!empty($form['fields'][$field_name]['settings_summary']['#markup'])) {
+        $items = explode('<br />', $form['fields'][$field_name]['settings_summary']['#markup']);
+        $last = array_pop($items);
+        array_push($items, str_replace('</div>', '', $last));
+        array_push($items, t('Extra line items field: @name', array('@name' => $extra_line_items_field ? $instances[$extra_line_items_field]['label'] : t('None defined'))) . '</div>');
+        $form['fields'][$field_name]['settings_summary']['#markup'] = implode('<br />', $items);
+      }
+
+      // Add form element for extra line items field configuration.
+      if (!empty($form['fields'][$field_name]['format']['settings_edit_form']['settings'])) {
+        $form['fields'][$field_name]['format']['settings_edit_form']['settings']['extra_line_items_field'] = array(
+          '#type' => 'select',
+          '#title' => t('Extra line item types field'),
+          '#description' => t('Choose a field that should be used as a source for configuration for any additional line items that should be added to the order with this product.'),
+          '#default_value' => $extra_line_items_field,
+          '#options' => array(0 => t('- None -')) + $line_item_type_ref_fields,
+        );
+      }
+    }
+  }
 }
