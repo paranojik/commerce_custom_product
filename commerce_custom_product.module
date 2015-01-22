@@ -339,6 +339,7 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
         // Loop over the fields we just added and remove any that haven't been
         // marked for inclusion on this form.
         foreach (element_children($form['line_item_fields'][$id]) as $field_name) {
+          $form['line_item_fields'][$id]['#parents'] = array('line_item_fields', $id);
           $info = field_info_instance('commerce_line_item', $field_name, $line_item->type);
           $form['line_item_fields'][$id][$field_name]['#commerce_cart_settings'] = commerce_cart_field_instance_access_settings($info);
 
@@ -358,10 +359,63 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
 
 /**
  * Form submit handler: add the selected product to the cart.
+ *
+ * @see commerce_cart_add_to_cart_form_submit()
  */
 function commerce_custom_product_add_to_cart_form_submit($form, &$form_state) {
-  // TODO implement based on  commerce_cart_add_to_cart_form_submit()
-  // - quantitiy might have changed by now - we need to create more line items.
+  $product_id = $form_state['values']['product_id'];
+  $product = commerce_product_load($product_id);
+
+  foreach ($form_state['line_items'] as $id => $line_item) {
+    // If the line item passed to the function is new...
+    if (empty($line_item->line_item_id)) {
+      // Create the new product line item of the same type.
+      $line_item = commerce_product_line_item_new($product, $form_state['values']['quantity'], 0, $line_item->data, $line_item->type);
+
+      // Allow modules to prepare this as necessary. This hook is defined by the
+      // Product Pricing module.
+      drupal_alter('commerce_product_calculate_sell_price_line_item', $line_item);
+
+      // Remove line item field values the user didn't have access to modify.
+      foreach ($form_state['values']['line_item_fields'][$id] as $field_name => $value) {
+        // Note that we're checking the Commerce Cart settings that we inserted
+        // into this form element array back when we built the form. This means a
+        // module wanting to alter a line item field widget to be available must
+        // update both its form element's #access value and the field_access value
+        // of the #commerce_cart_settings array.
+        if (empty($form['line_item_fields'][$id][$field_name]['#commerce_cart_settings']['field_access'])) {
+          unset($form_state['values']['line_item_fields'][$id][$field_name]);
+        }
+      }
+
+      // Unset the line item field values array if it is now empty.
+      if (empty($form_state['values']['line_item_fields'])) {
+        unset($form_state['values']['line_item_fields']);
+      }
+
+      // Add field data to the line item.
+      field_attach_submit('commerce_line_item', $line_item, $form['line_item_fields'][$id], $form_state);
+
+      // Process the unit price through Rules so it reflects the user's actual
+      // purchase price.
+      rules_invoke_event('commerce_product_calculate_sell_price', $line_item);
+
+      // Only attempt an Add to Cart if the line item has a valid unit price.
+      $line_item_wrapper = entity_metadata_wrapper('commerce_line_item', $line_item);
+
+      if (!is_null($line_item_wrapper->commerce_unit_price->value())) {
+        // Add the product to the specified shopping cart.
+        $form_state['line_items'][$id] = commerce_cart_product_add(
+          $form_state['values']['uid'],
+          $line_item,
+          isset($line_item->data['context']['add_to_cart_combine']) ? $line_item->data['context']['add_to_cart_combine'] : TRUE
+        );
+      }
+      else {
+        drupal_set_message(t('%title could not be added to your cart.', array('%title' => $product->title)), 'error');
+      }
+    }
+  }
 }
 
 /**
