@@ -468,33 +468,72 @@ function commerce_custom_product_field_formatter_info_alter(&$info) {
 }
 
 /**
- * Implements hook_form_FORM_ID_alter().
+ * Returns an array with a list of line item type / product reference fields.
  *
- * Alters field display overview.
+ * @param string $entity_type
+ *   The entity type to check.
+ * @param string|NULL $bundle
+ *   The bundle to check.
+ *
+ * @return array
+ *   List of line item type / product reference fields. The array is keyed by:
+ *   - line_item_type_ref_fields: array of relevant line item type reference
+ *     fields.
+ *   - product_ref_fields: array of relevant product reference fields.
  */
-function commerce_custom_product_form_field_ui_display_overview_form_alter(&$form, $form_state) {
-  // Check if we have both product reference and line item type reference fields.
-  $instances = field_info_instances($form['#entity_type'], $form['#bundle']);
-  $line_item_type_ref_fields = $product_ref_fields = array();
+function commerce_custom_product_get_field_options($entity_type, $bundle = NULL) {
+  $cache = &drupal_static(__FUNCTION__, array());
+  $cid = $entity_type . ':' . $bundle;
+  if (isset($cache[$cid])) {
+    return $cache[$cid];
+  }
+
+  $product_ref_fields = $line_item_type_ref_fields = array();
+  $instances = field_info_instances($entity_type, $bundle);
+  if (!$bundle) {
+    $all_instances = array();
+    foreach ($instances as $bundle_instances) {
+      $all_instances += $bundle_instances;
+    }
+    $instances = $all_instances;
+  }
   foreach ($instances as $instance) {
     $field = field_info_field($instance['field_name']);
     if ($field['type'] == 'commerce_custom_product_line_item_type_reference') {
       $line_item_type_ref_fields[$instance['field_name']] = $instance['label'];
     }
     elseif ($field['type'] == 'commerce_product_reference') {
-      $product_ref_fields[] = $instance['field_name'];
+      $product_ref_fields[$instance['field_name']] = $instance['field_name'];
     }
   }
 
-  if (!empty($line_item_type_ref_fields) && !empty($product_ref_fields)) {
-    foreach ($product_ref_fields as $field_name) {
+  $cache[$cid] = array(
+    'line_item_type_ref_fields' => $line_item_type_ref_fields,
+    'product_ref_fields' => $product_ref_fields,
+  );
+  return $cache[$cid];
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter() for field_ui_display_overview_form.
+ *
+ * Alters field display overview.
+ */
+function commerce_custom_product_form_field_ui_display_overview_form_alter(&$form, $form_state) {
+  // Check if we have both product reference and line item type reference
+  // fields.
+  $instances = field_info_instances($form['#entity_type'], $form['#bundle']);
+  $field_options = commerce_custom_product_get_field_options($form['#entity_type'], $form['#bundle']);
+
+  if (!empty($field_options['line_item_type_ref_fields']) && !empty($field_options['product_ref_fields'])) {
+    foreach ($field_options['product_ref_fields'] as $field_name) {
       $extra_line_items_field = $instances[$field_name]['display'][$form['#view_mode']]['settings']['extra_line_items_field'];
       if (!empty($form_state['values']['fields'][$field_name]['settings_edit_form']['settings']['extra_line_items_field'])) {
         $extra_line_items_field = $form_state['values']['fields'][$field_name]['settings_edit_form']['settings']['extra_line_items_field'];
       }
 
-      // Update field formatter settings summary with info about extra line items
-      // field.
+      // Update field formatter settings summary with info about extra line
+      // items field.
       if (!empty($form['fields'][$field_name]['settings_summary']['#markup'])) {
         $items = explode('<br />', $form['fields'][$field_name]['settings_summary']['#markup']);
         $last = array_pop($items);
@@ -505,14 +544,64 @@ function commerce_custom_product_form_field_ui_display_overview_form_alter(&$for
 
       // Add form element for extra line items field configuration.
       if (!empty($form['fields'][$field_name]['format']['settings_edit_form']['settings'])) {
-        $form['fields'][$field_name]['format']['settings_edit_form']['settings']['extra_line_items_field'] = array(
-          '#type' => 'select',
-          '#title' => t('Extra line item types field'),
-          '#description' => t('Choose a field that should be used as a source for configuration for any additional line items that should be added to the order with this product.'),
-          '#default_value' => $extra_line_items_field,
-          '#options' => array(0 => t('- None -')) + $line_item_type_ref_fields,
-        );
+        $field_settings = $instances[$field_name]['display'][$form['#view_mode']]['settings'];
+        if (!empty($form_state['values']['fields'][$field_name]['settings_edit_form']['settings']['extra_line_items_field'])) {
+          $field_settings = $form_state['values']['fields'][$field_name]['settings_edit_form']['settings'];
+        }
+        $form['fields'][$field_name]['format']['settings_edit_form']['settings'] += commerce_custom_product_field_formatter_settings_form_element($field_settings, $form['#entity_type'], $form['#bundle']);
       }
     }
   }
+}
+
+/**
+ * Implements hook_field_formatter_settings_form_alter().
+ *
+ * Ctools content type support for this field.
+ */
+function commerce_custom_product_field_formatter_settings_form_alter(&$settings_form, &$context) {
+  $context_name = key($context['form']['context']['#options']);
+  if (!empty($context['form']['context']['#default_value'])) {
+    $context_name = $context['form']['context']['#default_value'];
+  }
+  $pane_context = (isset($context['form_state']['contexts'][$context_name])) ? $context['form_state']['contexts'][$context_name] : NULL;
+  $entity_type = end($pane_context->type);
+  $field_settings = $context['instance']['display'][$context['view_mode']]['settings'];
+  $settings_form += commerce_custom_product_field_formatter_settings_form_element($field_settings, $entity_type);
+}
+
+/**
+ * Returns extra line item types field settings element.
+ *
+ * @param array $field_settings
+ *   The current field settings.
+ * @param string $entity_type
+ *   The entity type to check.
+ * @param string|NULL $bundle
+ *   The bundle to check.
+ *
+ * @return array
+ *   The configuration element(s).
+ */
+function commerce_custom_product_field_formatter_settings_form_element($field_settings, $entity_type, $bundle = NULL) {
+  $element = array();
+  // Check if we have both product reference and line item type reference
+  // fields.
+  $field_options = commerce_custom_product_get_field_options($entity_type, $bundle);
+  if (!empty($field_options['line_item_type_ref_fields']) && !empty($field_options['product_ref_fields'])) {
+    foreach ($field_options['product_ref_fields'] as $field_name) {
+      $extra_line_items_field = NULL;;
+      if (!empty($field_settings['extra_line_items_field'])) {
+        $extra_line_items_field = $field_settings['extra_line_items_field'];
+      }
+      $element['extra_line_items_field'] = array(
+        '#type' => 'select',
+        '#title' => t('Extra line item types field'),
+        '#description' => t('Choose a field that should be used as a source for configuration for any additional line items that should be added to the order with this product.'),
+        '#default_value' => $extra_line_items_field,
+        '#options' => array(0 => t('- None -')) + $field_options['line_item_type_ref_fields'],
+      );
+    }
+  }
+  return $element;
 }
