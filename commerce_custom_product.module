@@ -103,7 +103,7 @@ function commerce_custom_product_commerce_line_item_type_info() {
       $line_item_types[$type] = array(
         'name' => check_plain($line_item_type['name']),
         'description' => t('A customizable product line item type.'),
-        'product' => TRUE,
+        'product' => FALSE,
         'add_form_submit_value' => t('Add product'),
         'base' => 'commerce_product_line_item',
       );
@@ -215,7 +215,7 @@ function commerce_custom_product_field_validate($entity_type, $entity, $field, $
   foreach ($items as $delta => $item) {
     if (!empty($item['target_id'])) {
       $type = commerce_line_item_type_load($item['target_id']);
-      if (!$type || !$type['product']) {
+      if (!$type || $type['product']) {
         $errors[$field['field_name']][$langcode][$delta][] = array(
           'error' => 'commerce_custom_product_line_item_type_reference_invalid',
           'message' => t('%name: Invalid line item type referenced.', array('%name' => $instance['label'])),
@@ -252,7 +252,7 @@ function commerce_custom_product_field_widget_form(&$form, &$form_state, $field,
   if ($instance['widget']['type'] == 'commerce_custom_product_line_item_type_reference_select') {
     $line_items_types = array_filter(
       commerce_line_item_types(),
-      function ($item) { return $item['product']; }
+      function ($item) { return !$item['product']; }
     );
 
     $options = array(NULL => '- ' . t('None') . ' -');
