@@ -301,11 +301,24 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
   foreach (field_info_instances($form_state['context']['entity_type'], $entity->{$bundle_key}) as $instance) {
     $field = field_info_field($instance['field_name']);
     if ($field['type'] == 'commerce_product_reference') {
-      if (empty($instance['display'][$view_mode])) {
-        $view_mode = 'default';
+      // Custom settings.
+      if (is_array($view_mode)) {
+        $view_mode_settings = $view_mode;
       }
-      if ($instance['display'][$view_mode]['type'] == 'commerce_cart_add_to_cart_form') {
-        $extra_line_items_field = $instance['display'][$view_mode]['settings']['extra_line_items_field'];
+      // View mode by name.
+      elseif (!empty($instance['display'][$view_mode])) {
+        $view_mode_settings = $instance['display'][$view_mode];
+      }
+      // Default view mode settings.
+      elseif (isset($instance['display']['default'])) {
+        $view_mode_settings = $instance['display']['default'];
+      }
+      // All failed, just avoid notice.
+      else {
+        $view_mode_settings = array('type' => '');
+      }
+      if ($view_mode_settings['type'] == 'commerce_cart_add_to_cart_form') {
+        $extra_line_items_field = $view_mode_settings['settings']['extra_line_items_field'];
       }
     }
   }
