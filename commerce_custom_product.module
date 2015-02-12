@@ -415,7 +415,7 @@ function commerce_custom_product_add_to_cart_form_submit($form, &$form_state) {
           // Create the new product line item of the same type.
           $line_item = entity_create('commerce_line_item', array(
             'type' => $line_item->type,
-            'order_id' => 0,
+            'order_id' => $order->order_id,
             'data' => $line_item->data,
           ));
         }
