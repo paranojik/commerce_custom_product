@@ -106,11 +106,72 @@ function commerce_custom_product_commerce_line_item_type_info() {
         'product' => FALSE,
         'add_form_submit_value' => t('Add product'),
         'base' => 'commerce_product_line_item',
+        'callbacks' => array(
+          'configuration' => 'commerce_custom_product_line_item_configuration',
+        ),
       );
     }
   }
 
   return $line_item_types;
+}
+
+/**
+ * Ensures the extra line item contains the back-reference entity reference field.
+ *
+ * @param $line_item_type
+ *   The info array of the line item type being configured.
+ */
+function commerce_custom_product_line_item_configuration($line_item_type) {
+  commerce_product_line_item_configuration($line_item_type);
+  $type = $line_item_type['type'];
+
+  // Add back-reference field.
+  $field_name = 'commerce_parent_line_item';
+  commerce_activate_field($field_name);
+  field_cache_clear();
+
+  $field = field_info_field($field_name);
+  $instance = field_info_instance('commerce_line_item', $field_name, $type);
+
+  if (empty($field)) {
+    $field = array(
+      'field_name' => $field_name,
+      'type' => 'entityreference',
+      'cardinality' => 1,
+      'settings' => array(
+        'target_type' => 'commerce_line_item',
+      ),
+      'translatable' => FALSE,
+      'locked' => TRUE,
+    );
+    field_create_field($field);
+  }
+
+  if (empty($instance)) {
+    $instance = array(
+      'field_name' => $field_name,
+      'entity_type' => 'commerce_line_item',
+      'bundle' => $type,
+      'label' => t('Parent line item'),
+      'required' => FALSE,
+      'settings' => array(),
+
+      'widget' => array(
+        'type' => 'entityreference_autocomplete',
+        'weight' => 0,
+      ),
+
+      'display' => array(
+        'display' => array(
+          'label' => 'hidden',
+          'weight' => 0,
+        ),
+      ),
+    );
+    field_create_instance($instance);
+  }
+
 }
 
 /**
@@ -409,7 +470,8 @@ function commerce_custom_product_add_to_cart_form_submit($form, &$form_state) {
       if (empty($line_item->line_item_id)) {
         // Use different approach to create product vs non-product line items.
         if (!empty($line_item_types[$line_item->type]['product'])) {
-          commerce_product_line_item_new($product, $form_state['values']['quantity'], 0, $form_state['line_item']->data, $form_state['line_item']->type);
+          $line_item = commerce_product_line_item_new($product, $form_state['values']['quantity'], 0, $form_state['line_item']->data, $form_state['line_item']->type);
+          $line_item_wrapper = entity_metadata_wrapper('commerce_line_item', $line_item);
         }
         else {
           // Create the new product line item of the same type.
@@ -421,6 +483,9 @@ function commerce_custom_product_add_to_cart_form_submit($form, &$form_state) {
           $line_item_wrapper = entity_metadata_wrapper('commerce_line_item', $line_item);
           $line_item_wrapper->commerce_product = $product_id;
         }
+
+        // Maintain back-reference to the original product line item.
+        $line_item_wrapper->commerce_parent_line_item = $form_state['line_item']->line_item_id;
 
         // Remove line item field values the user didn't have access to modify.
         foreach ($form_state['values']['extra_line_items_fields'][$id] as $field_name => $value) {
