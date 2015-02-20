@@ -417,6 +417,7 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
           $line_item->data['context']['product_ids'] = array_keys($products);
           $line_item->data['context']['add_to_cart_combine'] = !empty($settings['combine']);
           $line_item->data['context']['show_single_product_attributes'] = !empty($settings['show_single_product_attributes']);
+          $line_item->data['context']['use_multi'] = $type['use_multi'];
           $form_state['extra_line_items'][] = $line_item;
         }
         else {
@@ -452,8 +453,17 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
  * @see commerce_cart_add_to_cart_form_submit()
  */
 function commerce_custom_product_add_to_cart_form_submit($form, &$form_state) {
+  if ($order = commerce_cart_order_load($form_state['values']['uid'])) {
+    $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+    $line_items_count = count($order_wrapper->commerce_line_items);
+  }
+
   // Use default submit handler to add product line item.
   commerce_cart_add_to_cart_form_submit($form, $form_state);
+
+  // If we still have same number of line items we combined new product into an
+  // existing line item.
+  $combined = empty($order) ? FALSE : $line_items_count == count($order_wrapper->commerce_line_items);
 
   //Add any additional line items.
   if (!empty($form_state['extra_line_items'])) {
@@ -466,6 +476,12 @@ function commerce_custom_product_add_to_cart_form_submit($form, &$form_state) {
     $line_item_types = commerce_line_item_types();
 
     foreach ($form_state['extra_line_items'] as $id => $line_item) {
+      // If the product was combined into an existing line item and we are not
+      // adding multiple extra line items skip it.
+      if ($combined && !$line_item->data['context']['use_multi']) {
+        break;
+      }
+
       // If the line item passed to the function is new...
       if (empty($line_item->line_item_id)) {
         // Use different approach to create product vs non-product line items.
