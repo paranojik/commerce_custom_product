@@ -20,6 +20,12 @@ function commerce_custom_product_customizing_pane_settings_form($checkout_pane) 
       '#description' => t('Add update button on the checkout pane.'),
       '#default_value' => variable_get('commerce_custom_product_customizing_pane_update_button', TRUE),
     ),
+    'commerce_custom_product_customizing_skip' => array(
+      '#type' => 'checkbox',
+      '#title' => t('Skip customization if no customizable products are available'),
+      '#description' => t('Continues to the next checkout step if no customizable products are available.'),
+      '#default_value' => variable_get('commerce_custom_product_customizing_skip', TRUE),
+    ),
   );
 }
 

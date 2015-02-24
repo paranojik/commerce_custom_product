@@ -71,4 +71,5 @@ function commerce_custom_product_field_schema($field) {
 function commerce_custom_product_uninstall() {
   variable_del('commerce_custom_product_customizing_pane_description');
   variable_del('commerce_custom_product_customizing_pane_update_button');
+  variable_del('commerce_custom_product_customizing_skip');
 }
