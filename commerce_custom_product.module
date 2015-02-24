@@ -627,6 +627,13 @@ function commerce_custom_product_add_to_cart_form_submit($form, &$form_state) {
   // existing line item.
   $combined = empty($line_items_count) ? FALSE : $line_items_count == count($order_wrapper->commerce_line_items);
 
+  // Collect line item ids. Needed to ensure we deal with really existing line
+  // items later in processing.
+  $line_item_ids = array();
+  foreach ($order_wrapper->commerce_line_items as $line_item) {
+    $line_item_ids[$line_item->getIdentifier()] = $line_item->getIdentifier();
+  }
+
   // Add any additional line items.
   if (!empty($form_state['extra_line_items'])) {
     $product_id = $form_state['values']['product_id'];
@@ -643,7 +650,14 @@ function commerce_custom_product_add_to_cart_form_submit($form, &$form_state) {
         break;
       }
 
-      // If the line item passed to the function is new...
+      // Ensure non existing line items are re-created. We can't rely on the
+      // data in the form state as they might are outdated by e.g. an action in
+      // another tab. Thus we check that the line item id is in the current
+      // order and if not handle it like a new one.
+      if (!empty($line_item->line_item_id) && !isset($line_item_ids[$line_item->line_item_id])) {
+        unset($line_item->line_item_id);
+      }
+      // If it's a new line item create it, otherwise update it.
       if (empty($line_item->line_item_id)) {
         // Use different approach to create product vs non-product line items.
         if (!empty($line_item_types[$line_item->type]['product'])) {
