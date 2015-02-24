@@ -453,10 +453,6 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
     foreach ($types as $type) {
       $line_item_count = 0;
       do {
-        $form['extra_line_items_fields'][$id] = array(
-          '#type' => 'container',
-        );
-
         $use_multi += (int) $type['use_multi'];
         if (empty($form_state['extra_line_items'][$id])) {
           $line_item = FALSE;
@@ -484,20 +480,7 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
         else {
           $line_item = $form_state['extra_line_items'][$id];
         }
-        $form_state['extra_line_items'][$id]->data['context']['extra_line_item_index'] = $id;
-        field_attach_form('commerce_line_item', $line_item, $form['extra_line_items_fields'][$id], $form_state);
-
-        // Loop over the fields we just added and remove any that haven't been
-        // marked for inclusion on this form.
-        foreach (element_children($form['extra_line_items_fields'][$id]) as $field_name) {
-          $form['extra_line_items_fields'][$id]['#parents'] = array('extra_line_items_fields', $id);
-          $info = field_info_instance('commerce_line_item', $field_name, $line_item->type);
-          $form['extra_line_items_fields'][$id][$field_name]['#commerce_cart_settings'] = commerce_cart_field_instance_access_settings($info);
-
-          if (empty($form['extra_line_items_fields'][$id][$field_name]['#commerce_cart_settings']['field_access'])) {
-            $form['extra_line_items_fields'][$id][$field_name]['#access'] = FALSE;
-          }
-        }
+        $form['extra_line_items_fields'][$id] = commerce_custom_product_extra_line_item_form_element($line_item, $form_state, array_merge($form['extra_line_items_fields']['#parents'], array($id)));
         $id++;
         $line_item_count++;
       // TODO - We might need to read quantity from a different source.
@@ -518,6 +501,42 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
 
     $form['#submit'][0] = 'commerce_custom_product_add_to_cart_form_submit';
   }
+}
+
+/**
+ * Creates the customizing line item form element.
+ *
+ * @param object $line_item
+ *   The customization line item.
+ * @param array $form_state
+ *   The form state.
+ * @param NULL|array $form_parents
+ *   If set this is used as parents array of the form element.
+ *
+ * @return array
+ *   Customizing line item form element.
+ */
+function commerce_custom_product_extra_line_item_form_element($line_item, array &$form_state, $form_parents = NULL) {
+  $element = array(
+    '#type' => 'container',
+  );
+  // Add all line item fields to the form element.
+  field_attach_form('commerce_line_item', $line_item, $element, $form_state);
+
+  // Loop over the fields we just added and remove any that haven't been
+  // marked for inclusion on this form.
+  foreach (element_children($element) as $field_name) {
+    if ($form_parents) {
+      $element['#parents'] = $form_parents;
+    }
+    $info = field_info_instance('commerce_line_item', $field_name, $line_item->type);
+    $element[$field_name]['#commerce_cart_settings'] = commerce_cart_field_instance_access_settings($info);
+
+    if (empty($element[$field_name]['#commerce_cart_settings']['field_access'])) {
+      $element[$field_name]['#access'] = FALSE;
+    }
+  }
+  return $element;
 }
 
 /**
@@ -764,4 +783,40 @@ function commerce_custom_product_field_formatter_settings_form_element($field_se
     }
   }
   return $element;
+}
+
+/**
+ * Implements hook_commerce_checkout_page_info().
+ */
+function commerce_custom_product_commerce_checkout_page_info() {
+  $checkout_pages = array();
+
+  // Define a page where the customizing of products can be handled.
+  $checkout_pages['customizing'] = array(
+    'name' => t('Customization'),
+    'title' => t('Customize products'),
+    'help' => t('Customize customizable products.'),
+    'weight' => -20,
+    'buttons' => TRUE,
+    'status_cart' => TRUE,
+  );
+
+  return $checkout_pages;
+}
+
+/**
+ * Implements hook_commerce_checkout_pane_info().
+ */
+function commerce_custom_product_commerce_checkout_pane_info() {
+  return array(
+    'customizing_pane' => array(
+      'title' => t('Product customization'),
+      'name' => t('Product customization'),
+      'page' => 'customizing',
+      'review' => FALSE,
+      'base' => 'commerce_custom_product_customizing_pane',
+      'file' => 'commerce_custom_product.panes.inc',
+      'weight' => 0,
+    ),
+  );
 }
