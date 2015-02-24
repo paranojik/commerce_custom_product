@@ -344,6 +344,37 @@ function commerce_custom_product_field_is_empty($item, $field) {
 }
 
 /**
+ * Implements hook_commerce_order_presave().
+ */
+function commerce_custom_product_commerce_order_presave($order) {
+  // Collect all line items. And group extra line items on their parent.
+  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+  $line_item_ids = array();
+  $extra_line_items = array();
+  foreach ($order_wrapper->commerce_line_items as $i => $line_item_wrapper) {
+    $line_item_id = $line_item_wrapper->getIdentifier();
+    $line_item_ids[$line_item_id] = $line_item_id;
+    // If this line item has a commerce_parent_line_item field and the context
+    // data tell us that it actually has a parent queue it for deletion.
+    if (isset($line_item_wrapper->commerce_parent_line_item) && isset($line_item_wrapper->value()->data['context']['extra_line_item_index'])) {
+      $extra_line_items[$line_item_wrapper->commerce_parent_line_item->raw()][$i] = $line_item_id;
+    }
+  }
+  // Now filter all extra line items whose parent is gone.
+  $extra_line_items_to_delete = array();
+  foreach (array_diff_key($extra_line_items, $line_item_ids) as $extra_line_items) {
+    $extra_line_items_to_delete += $extra_line_items;
+  }
+  // Delete orphaned line items and remove references from order.
+  if (!empty($extra_line_items_to_delete)) {
+    commerce_line_item_delete_multiple($extra_line_items_to_delete);
+    // Now remove the line item references. As we store the index in the field
+    // above we can use array_diff_key() again.
+    $order->commerce_parent_line_item[LANGUAGE_NONE] = array_values(array_diff_key($order->commerce_line_items[LANGUAGE_NONE], $extra_line_items_to_delete));
+  }
+}
+
+/**
  * Returns a list of existing extra line items in an order.
  *
  * @param object $order
