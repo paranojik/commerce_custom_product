@@ -1,10 +1,8 @@
 <?php
-
 /**
  * @file
  * Adds features to support the creation of customizable products.
  */
-
 
 /**
  * Implements hook_menu().
@@ -16,7 +14,10 @@ function commerce_custom_product_menu() {
     'title' => 'Add a product line item type',
     'description' => 'Create a new customizable product line item type.',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('commerce_custom_product_line_item_type_form', array('type' => '', 'name' => '')),
+    'page arguments' => array(
+      'commerce_custom_product_line_item_type_form',
+      array('type' => '', 'name' => ''),
+    ),
     'access arguments' => array('administer line item types'),
     'type' => MENU_LOCAL_ACTION,
     'file' => 'includes/commerce_custom_product.admin.inc',
@@ -117,9 +118,9 @@ function commerce_custom_product_commerce_line_item_type_info() {
 }
 
 /**
- * Ensures the extra line item contains the back-reference entity reference field.
+ * Ensure extra line item contains the back-reference entity reference field.
  *
- * @param $line_item_type
+ * @param array $line_item_type
  *   The info array of the line item type being configured.
  */
 function commerce_custom_product_line_item_configuration($line_item_type) {
@@ -184,17 +185,17 @@ function commerce_custom_product_line_item_types() {
 /**
  * Saves a customizable product line item type.
  *
- * @param $line_item_type
+ * @param string $line_item_type
  *   The full line item type info array to save.
- * @param $configure
+ * @param bool $configure
  *   Boolean indicating whether or not line item type configuration should be
  *   performed in the event of a new line item type being saved.
- * @param $skip_rebuild
+ * @param bool $skip_rebuild
  *   Boolean indicating whether or not this save should result in the menu being
  *   rebuilt; defaults to FALSE. This is useful when you intend to perform many
  *   saves at once, as menu rebuilding is very costly to performance.
  *
- * @return
+ * @return FALSE|SAVED_NEW|SAVED_UPDATED
  *   The return value of the call to drupal_write_record() to save the line item
  *   type, either FALSE on failure or SAVED_NEW or SAVED_UPDATED indicating the
  *   type of query performed to save the line item type.
@@ -233,7 +234,7 @@ function commerce_custom_product_line_item_type_save($line_item_type, $configure
 /**
  * Deletes a customizable product line item type.
  *
- * @param $type
+ * @param string $type
  *   The machine-name of the line item type to delete.
  */
 function commerce_custom_product_line_item_type_delete($type) {
@@ -313,7 +314,9 @@ function commerce_custom_product_field_widget_form(&$form, &$form_state, $field,
   if ($instance['widget']['type'] == 'commerce_custom_product_line_item_type_reference_select') {
     $line_items_types = array_filter(
       commerce_line_item_types(),
-      function ($item) { return !$item['product']; }
+      function ($item) {
+        return !$item['product'];
+      }
     );
 
     $options = array(NULL => '- ' . t('None') . ' -');
@@ -409,10 +412,10 @@ function commerce_custom_product_order_get_existing_extra_line_items($order = NU
 }
 
 /**
- * Implements hook_form_BASE_FORM_ID_alter();
+ * Implements hook_form_BASE_FORM_ID_alter().
  *
- * Instead of displaying fields from one line item type it reads data from a field
- * and displays one or more line items.
+ * Instead of displaying fields from one line item type it reads data from a
+ * field and displays one or more line items.
  */
 function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$form, &$form_state) {
   $entity = entity_load($form_state['context']['entity_type'], array($form_state['context']['entity_id']));
@@ -445,8 +448,8 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
     }
   }
 
-  // If configuration field was found and there are values on it add stuff to the
-  // form.
+  // If configuration field was found and there are values on it add stuff to
+  // the form.
   if ($extra_line_items_field && $types = field_get_items($form_state['context']['entity_type'], $entity, $extra_line_items_field)) {
     if (!empty($form_state['input']['quantity'])) {
       $form['quantity']['#default_value'] = $form_state['input']['quantity'];
@@ -514,8 +517,8 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
         $form['extra_line_items_fields'][$id] = commerce_custom_product_extra_line_item_form_element($line_item, $form_state, array_merge($form['extra_line_items_fields']['#parents'], array($id)));
         $id++;
         $line_item_count++;
-      // TODO - We might need to read quantity from a different source.
-      } while($type['use_multi'] && $line_item_count < $form['quantity']['#default_value']);
+        // TODO - We might need to read quantity from a different source.
+      } while ($type['use_multi'] && $line_item_count < $form['quantity']['#default_value']);
     }
 
     // If this is an existing line item that can be updated adjust some of the

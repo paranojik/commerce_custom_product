@@ -1,15 +1,13 @@
 <?php
-
 /**
  * @file
  * Administrative page and form callbacks for Customizable Products.
  */
 
-
 /**
  * Page callback: displays an edit page for the specified line item type.
  *
- * @param $type
+ * @param string $type
  *   The machine-name of the line item type whose edit form should be displayed.
  */
 function commerce_custom_product_line_item_type_edit($type) {
