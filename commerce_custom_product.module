@@ -780,7 +780,10 @@ function commerce_custom_product_form_field_ui_display_overview_form_alter(&$for
 
   if (!empty($field_options['line_item_type_ref_fields']) && !empty($field_options['product_ref_fields'])) {
     foreach ($field_options['product_ref_fields'] as $field_name) {
-      $extra_line_items_field = $instances[$field_name]['display'][$form['#view_mode']]['settings']['extra_line_items_field'];
+      $extra_line_items_field = NULL;
+      if (isset($instances[$field_name]['display'][$form['#view_mode']]['settings']['extra_line_items_field'])) {
+        $extra_line_items_field = $instances[$field_name]['display'][$form['#view_mode']]['settings']['extra_line_items_field'];
+      }
       if (!empty($form_state['values']['fields'][$field_name]['settings_edit_form']['settings']['extra_line_items_field'])) {
         $extra_line_items_field = $form_state['values']['fields'][$field_name]['settings_edit_form']['settings']['extra_line_items_field'];
       }
