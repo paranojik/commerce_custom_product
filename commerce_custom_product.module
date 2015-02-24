@@ -412,6 +412,54 @@ function commerce_custom_product_order_get_existing_extra_line_items($order = NU
 }
 
 /**
+ * Extract the field settings that apply to alter the add to cart form.
+ *
+ * @param string|array $view_mode
+ *   The view mode either the name or definition array of it.
+ * @param string $entiy_type
+ *   The entity type we deal with.
+ * @param string $bundle
+ *   The bundle of the entity type.
+ *
+ * @return array
+ *   The array with the customization settings:
+ *   - extra_line_items_field: The line items field to use.
+ *   - skip_customization_on_add_to_cart: If customizing in the add to cart is
+ *     skipped.
+ */
+function commerce_custom_product_get_field_customization_settings($view_mode, $entiy_type, $bundle) {
+  $customization_settings = array(
+    'extra_line_items_field' => NULL,
+    'skip_customization_on_add_to_cart' => FALSE,
+  );
+  // If the display information contains settings use them, otherwise it's the
+  // name of a view mode.
+  if (is_array($view_mode)) {
+    if (isset($view_mode['settings']['extra_line_items_field'])) {
+      $customization_settings['extra_line_items_field'] = $view_mode['settings']['extra_line_items_field'];
+      $customization_settings['skip_customization_on_add_to_cart'] = !empty($view_mode['settings']['skip_customization_on_add_to_cart']);
+    }
+  }
+  else {
+    // Check field configuration and see which field is to be used as the source
+    // for configuration.
+    foreach (field_info_instances($entiy_type, $bundle) as $instance) {
+      $field = field_info_field($instance['field_name']);
+      if ($field['type'] == 'commerce_product_reference') {
+        if (empty($instance['display'][$view_mode])) {
+          $view_mode = 'default';
+        }
+        if ($instance['display'][$view_mode]['type'] == 'commerce_cart_add_to_cart_form') {
+          $customization_settings['extra_line_items_field'] = $instance['display'][$view_mode]['settings']['extra_line_items_field'];
+          $customization_settings['skip_customization_on_add_to_cart'] = !empty($instance['display'][$view_mode]['settings']['skip_customization_on_add_to_cart']);
+        }
+      }
+    }
+  }
+  return $customization_settings;
+}
+
+/**
  * Implements hook_form_BASE_FORM_ID_alter().
  *
  * Instead of displaying fields from one line item type it reads data from a
@@ -424,33 +472,12 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
   $entity_info = entity_get_info($form_state['context']['entity_type']);
   $bundle_key = $entity_info['entity keys']['bundle'];
 
-  // If the display information contains settings use them, otherwise it's the
-  // name of a view mode.
-  $extra_line_items_field = NULL;
-  if (is_array($view_mode)) {
-    if (isset($view_mode['settings']['extra_line_items_field'])) {
-      $extra_line_items_field = $view_mode['settings']['extra_line_items_field'];
-    }
-  }
-  else {
-    // Check field configuration and see which field is to be used as the source
-    // for configuration.
-    foreach (field_info_instances($form_state['context']['entity_type'], $entity->{$bundle_key}) as $instance) {
-      $field = field_info_field($instance['field_name']);
-      if ($field['type'] == 'commerce_product_reference') {
-        if (empty($instance['display'][$view_mode])) {
-          $view_mode = 'default';
-        }
-        if ($instance['display'][$view_mode]['type'] == 'commerce_cart_add_to_cart_form') {
-          $extra_line_items_field = $instance['display'][$view_mode]['settings']['extra_line_items_field'];
-        }
-      }
-    }
-  }
+  // Fetch the settings for the customization form.
+  $customization_settings = commerce_custom_product_get_field_customization_settings($view_mode, $form_state['context']['entity_type'], $entity->{$bundle_key});
 
   // If configuration field was found and there are values on it add stuff to
   // the form.
-  if ($extra_line_items_field && $types = field_get_items($form_state['context']['entity_type'], $entity, $extra_line_items_field)) {
+  if ($customization_settings['extra_line_items_field'] && $types = field_get_items($form_state['context']['entity_type'], $entity, $customization_settings['extra_line_items_field'])) {
     if (!empty($form_state['input']['quantity'])) {
       $form['quantity']['#default_value'] = $form_state['input']['quantity'];
     }
@@ -514,7 +541,11 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
         else {
           $line_item = $form_state['extra_line_items'][$id];
         }
-        $form['extra_line_items_fields'][$id] = commerce_custom_product_extra_line_item_form_element($line_item, $form_state, array_merge($form['extra_line_items_fields']['#parents'], array($id)));
+        // If customization in the add to cart form is disabled just ensure the
+        // extra line items are prepared.
+        if (!$customization_settings['skip_customization_on_add_to_cart']) {
+          $form['extra_line_items_fields'][$id] = commerce_custom_product_extra_line_item_form_element($line_item, $form_state, array_merge($form['extra_line_items_fields']['#parents'], array($id)));
+        }
         $id++;
         $line_item_count++;
         // TODO - We might need to read quantity from a different source.
@@ -523,7 +554,7 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
 
     // If this is an existing line item that can be updated adjust some of the
     // form elements.
-    if (!$use_multi && $has_existing_extra_line_items) {
+    if (!$use_multi && $has_existing_extra_line_items && !$customization_settings['skip_customization_on_add_to_cart']) {
       $form['submit']['#value'] = t('Upate Customization');
       $form['submit']['#name'] = 'update';
       $form_state['line_item']->line_item_id = $parent_line_item->line_item_id;
@@ -637,25 +668,28 @@ function commerce_custom_product_add_to_cart_form_submit($form, &$form_state) {
         // Update quantity.
         $line_item->quantity = (int) $form_state['values']['quantity'];
       }
-      // Remove line item field values the user didn't have access to modify.
-      foreach ($form_state['values']['extra_line_items_fields'][$id] as $field_name => $value) {
-        // Note that we're checking the Commerce Cart settings that we inserted
-        // into this form element array back when we built the form. This means
-        // a module wanting to alter a line item field widget to be available
-        // must update both its form element's #access value and the
-        // field_access value of the #commerce_cart_settings array.
-        if (empty($form['extra_line_items_fields'][$id][$field_name]['#commerce_cart_settings']['field_access'])) {
-          unset($form_state['values']['extra_line_items_fields'][$id][$field_name]);
+      // Check if we've fields with values to set into the line items.
+      if (!empty($form_state['values']['extra_line_items_fields'])) {
+        // Remove line item field values the user didn't have access to modify.
+        foreach ($form_state['values']['extra_line_items_fields'][$id] as $field_name => $value) {
+          // Note that we're checking the Commerce Cart settings that we
+          // inserted into this form element array back when we built the form.
+          // This means a module wanting to alter a line item field widget to be
+          // available must update both its form element's #access value and the
+          // field_access value of the #commerce_cart_settings array.
+          if (empty($form['extra_line_items_fields'][$id][$field_name]['#commerce_cart_settings']['field_access'])) {
+            unset($form_state['values']['extra_line_items_fields'][$id][$field_name]);
+          }
         }
-      }
 
-      // Unset the line item field values array if it is now empty.
-      if (empty($form_state['values']['extra_line_items_fields'][$id])) {
-        unset($form_state['values']['extra_line_items_fields'][$id]);
-      }
+        // Unset the line item field values array if it is now empty.
+        if (empty($form_state['values']['extra_line_items_fields'][$id])) {
+          unset($form_state['values']['extra_line_items_fields'][$id]);
+        }
 
-      // Add field data to the line item.
-      field_attach_submit('commerce_line_item', $line_item, $form['extra_line_items_fields'][$id], $form_state);
+        // Add field data to the line item.
+        field_attach_submit('commerce_line_item', $line_item, $form['extra_line_items_fields'][$id], $form_state);
+      }
       // If this is a new line item we need to add it to the order too.
       if (commerce_line_item_save($line_item) == SAVED_NEW) {
         // Add new line item to the order.
@@ -683,6 +717,7 @@ function commerce_custom_product_quantity_js($form, $form_state) {
  */
 function commerce_custom_product_field_formatter_info_alter(&$info) {
   $info['commerce_cart_add_to_cart_form']['settings']['extra_line_items_field'] = NULL;
+  $info['commerce_cart_add_to_cart_form']['settings']['skip_customization_on_add_to_cart'] = FALSE;
 }
 
 /**
@@ -749,6 +784,7 @@ function commerce_custom_product_form_field_ui_display_overview_form_alter(&$for
       if (!empty($form_state['values']['fields'][$field_name]['settings_edit_form']['settings']['extra_line_items_field'])) {
         $extra_line_items_field = $form_state['values']['fields'][$field_name]['settings_edit_form']['settings']['extra_line_items_field'];
       }
+      $skip_customization_on_add_to_cart = !empty($instances[$field_name]['display'][$form['#view_mode']]['settings']['skip_customization_on_add_to_cart']) || !empty($form_state['values']['fields'][$field_name]['settings_edit_form']['settings']['skip_customization_on_add_to_cart']);
 
       // Update field formatter settings summary with info about extra line
       // items field.
@@ -756,7 +792,8 @@ function commerce_custom_product_form_field_ui_display_overview_form_alter(&$for
         $items = explode('<br />', $form['fields'][$field_name]['settings_summary']['#markup']);
         $last = array_pop($items);
         array_push($items, str_replace('</div>', '', $last));
-        array_push($items, t('Extra line items field: @name', array('@name' => $extra_line_items_field ? $instances[$extra_line_items_field]['label'] : t('None defined'))) . '</div>');
+        array_push($items, t('Extra line items field: @name', array('@name' => $extra_line_items_field ? $instances[$extra_line_items_field]['label'] : t('None defined'))));
+        array_push($items, t('Skip customization on add to cart form: @value', array('@vakue' => $skip_customization_on_add_to_cart ? t('Yes') : t('No'))) . '</div>');
         $form['fields'][$field_name]['settings_summary']['#markup'] = implode('<br />', $items);
       }
 
@@ -818,7 +855,20 @@ function commerce_custom_product_field_formatter_settings_form_element($field_se
         '#description' => t('Choose a field that should be used as a source for configuration for any additional line items that should be added to the order with this product.'),
         '#default_value' => $extra_line_items_field,
         '#options' => array(0 => t('- None -')) + $field_options['line_item_type_ref_fields'],
+        '#attributes' => array('class' => array('extra-line-items-field')),
       );
+      $element['skip_customization_on_add_to_cart'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Skip customization on add to cart'),
+        '#description' => t('If enabled the customization form is not show in the Add to Cart form but can be done in the checkout.'),
+        '#default_value' => !empty($field_settings['skip_customization_on_add_to_cart']),
+        '#states' => array(
+          'invisible' => array(
+            '.extra-line-items-field' => array('value' => '0'),
+          ),
+        ),
+      );
+
     }
   }
   return $element;
