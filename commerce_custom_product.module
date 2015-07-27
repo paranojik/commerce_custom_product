@@ -488,7 +488,7 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
       'method' => 'replace',
     );
 
-    $product_ids = $form_state['line_item']->data['context']['product_ids'];
+    $product_ids = commerce_cart_add_to_cart_form_product_ids($form_state['line_item']);
     $products = commerce_product_load_multiple($product_ids);
 
     $form['extra_line_items_fields'] = array(
