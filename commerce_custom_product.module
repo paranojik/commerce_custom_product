@@ -416,7 +416,7 @@ function commerce_custom_product_order_get_existing_extra_line_items($order = NU
  *
  * @param string|array $view_mode
  *   The view mode either the name or definition array of it.
- * @param string $entiy_type
+ * @param string $entity_type
  *   The entity type we deal with.
  * @param string $bundle
  *   The bundle of the entity type.
@@ -427,7 +427,7 @@ function commerce_custom_product_order_get_existing_extra_line_items($order = NU
  *   - skip_customization_on_add_to_cart: If customizing in the add to cart is
  *     skipped.
  */
-function commerce_custom_product_get_field_customization_settings($view_mode, $entiy_type, $bundle) {
+function commerce_custom_product_get_field_customization_settings($view_mode, $entity_type, $bundle) {
   $customization_settings = array(
     'extra_line_items_field' => NULL,
     'skip_customization_on_add_to_cart' => FALSE,
@@ -443,7 +443,7 @@ function commerce_custom_product_get_field_customization_settings($view_mode, $e
   else {
     // Check field configuration and see which field is to be used as the source
     // for configuration.
-    foreach (field_info_instances($entiy_type, $bundle) as $instance) {
+    foreach (field_info_instances($entity_type, $bundle) as $instance) {
       $field = field_info_field($instance['field_name']);
       if ($field['type'] == 'commerce_product_reference') {
         if (empty($instance['display'][$view_mode])) {
@@ -484,7 +484,7 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
 
     $form['quantity']['#ajax'] = array(
       'callback' => 'commerce_custom_product_quantity_js',
-      'wrapper' => drupal_html_class($form['#form_id']),
+      'wrapper' => $form['#id'],
       'method' => 'replace',
     );
 
@@ -502,7 +502,8 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
     // Get existent extra line items of the current order.
     $existing_extra_line_item_data = commerce_custom_product_order_get_existing_extra_line_items();
     foreach ($existing_extra_line_item_data as $parent_line_item_id => $data) {
-      if (!empty($data['parent_line_item']->data['context']['product_ids']) && $data['parent_line_item']->data['context']['product_ids'] == $product_ids) {
+      $parent_product_ids = commerce_cart_add_to_cart_form_product_ids($data['parent_line_item']);
+      if (!empty($data['parent_line_item']->data['context']['product_ids']) && $parent_product_ids == $product_ids) {
         $parent_line_item = $data['parent_line_item'];
         $existing_extra_line_items = $data['extra_line_items'];
       }
@@ -511,16 +512,28 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
     $use_multi = 0;
     $has_existing_extra_line_items = array();
     $id = 0;
+    $previous_extra_line_items = $form_state['extra_line_items'];
+    $form_state['extra_line_items'] = array();
     foreach ($types as $type) {
       $line_item_count = 0;
+      // Reset the count for each type.
+      $use_multi = (int) $type['use_multi'];
       do {
-        $use_multi += (int) $type['use_multi'];
+        // Try to find the corresponding line item in old form_state
+        foreach ($previous_extra_line_items as $extra_line_item) {
+          if (isset($extra_line_item->data['context']['use_multi']) && $extra_line_item->data['context']['use_multi'] == $use_multi && $extra_line_item->type == $type['target_id']) {
+            $form_state['extra_line_items'][$id] = $extra_line_item;
+            $line_item = $extra_line_item;
+            break;
+          }
+        }
+        // If line item was not found in previous form_state.
         if (empty($form_state['extra_line_items'][$id])) {
           $line_item = FALSE;
           // If this isn't quantity based try to detect existing line item.
           if (empty($type['use_multi']) && isset($existing_extra_line_items)) {
             foreach ($existing_extra_line_items as $extra_line_item) {
-              if (isset($extra_line_item->data['context']['use_multi']) && $extra_line_item->data['context']['use_multi'] == $type['use_multi'] && $extra_line_item->type == $type['target_id']) {
+              if (isset($extra_line_item->data['context']['use_multi']) && $extra_line_item->data['context']['use_multi'] == $use_multi && $extra_line_item->type == $type['target_id']) {
                 $line_item = $extra_line_item;
                 $has_existing_extra_line_items = TRUE;
                 break;
@@ -538,9 +551,7 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
           }
           $form_state['extra_line_items'][$id] = $line_item;
         }
-        else {
-          $line_item = $form_state['extra_line_items'][$id];
-        }
+
         // If customization in the add to cart form is disabled just ensure the
         // extra line items are prepared.
         if (!$customization_settings['skip_customization_on_add_to_cart']) {
@@ -548,6 +559,7 @@ function commerce_custom_product_form_commerce_cart_add_to_cart_form_alter(&$for
         }
         $id++;
         $line_item_count++;
+        $use_multi += (int) $type['use_multi'];
         // TODO - We might need to read quantity from a different source.
       } while ($type['use_multi'] && $line_item_count < $form['quantity']['#default_value']);
     }
